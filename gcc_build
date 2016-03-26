@@ -1,0 +1,80 @@
+#!/bin/tcsh
+########## 設定項目 ##########
+# インストール先
+set PREFIX=${HOME}/local
+# 1回目のビルドに必要なC/C++コンパイラ
+set CC=gcc
+set CXX=g++
+# porgあるいはpaco
+set PORG = "porg"
+# 1回目のビルド時のコンパイルオプション(上記のコンパイラで使用できるもののみ)
+set STAGE1_CFLAGS="-march=native -O3"
+# 2・3回目(完成品)のビルド時のコンパイルオプション(ビルドする最新版のGCCで使用できるもの)
+set BOOT_CFLAGS="-march=native -O3"
+#sudo(不要なら空文字)
+set SUDO="sudo"
+# FLAGS→後につける(-j8など)
+# BEFORE→前につける(nice -n 19・ionice -n 7・env 〇〇〇〇など)
+set MAKE_BEFORE=""
+set MAKE_FLAGS="-j8"
+#ビルド時のみ
+set BUILD_FLAGS=""
+set BUILD_BEFORE=""
+#インストール時のみ
+set INSTALL_FLAGS=""
+set INSTALL_BEFORE=""
+
+########## ここまで ##########
+
+set BASEURL='https://gcc.gnu.org/svn/gcc/tags/'
+set TAGDIR=`svn ls ${BASEURL} | grep '^gcc_[0-9]*_[0-9]*_[0-9]*_release' | tail -n 1`
+set CODIR="${BASEURL}${TAGDIR}"
+set VER=`echo ${TAGDIR} | sed 's-^gcc_\([0-9]*\)_\([0-9]*\)_\([0-9]*\)_release/$-\1.\2.\3-'`
+set MAJVER=`echo ${VER} | sed 's/^\([0-9]*\)\.[0-9]*\.[0-9]*$/\1/'`
+set LOCALDIR="gcc-${VER}"
+which "gcc${MAJVER}" > /dev/null
+if ( $? == 0 ) then
+    "gcc${MAJVER}" --version | grep ${VER} > /dev/null
+    if ( $? == 0 ) then
+        echo "お使いのGCC${VER}は最新です。" > /dev/stderr
+        exit 2
+    endif
+endif
+
+set PROCESSOR=`uname -p`
+set TARGET_TRIPLE=`${CC} -v &| grep ": ${PROCESSOR}-" | head -n 1 | sed "s/^..*: //"`
+
+echo "最新版、バージョン ${VER} をインストールします。" > /dev/stderr
+
+echo "ソースコードをダウンロード中・・・" > /dev/stderr
+
+
+svn export ${CODIR} ${LOCALDIR}
+
+echo "configure中・・・" > /dev/stderr
+cd ${LOCALDIR}
+contrib/download_prerequisites
+ls ${LOCALDIR} >& /dev/null || mkdir ${LOCALDIR}
+cd ${LOCALDIR}
+${NICE}../configure --program-suffix=${MAJVER} --disable-multilib --enable-languages=c,c++ --host=${TARGET_TRIPLE} --build=${TARGET_TRIPLE} --target=${TARGET_TRIPLE} --disable-libgcj --enable--checking=release --prefix=${PREFIX} --with-local-prefix=${PREFIX}
+if( $? != 0 ) then
+    echo "configure失敗" > /dev/stderr
+    exit 1
+endif
+$MAKE_BEFORE $BUILD_BEFORE make $MAKE_FLAGS $BUILD_FLAGS STAGE1_CFLAGS="${STAGE1_CFLAGS}" BOOT_CFLAGS="${BOOT_CFLAGS}"
+if( $? != 0 ) then
+    echo "ビルド失敗" > /dev/stderr
+    exit 1
+endif
+
+echo "前バージョンの削除中・・・" > /dev/stderr
+${SUDO} ${PORG} -br gcc || test 0
+
+echo "インストール中・・・" > /dev/stderr
+${SUDO} ${PORG} -lD "${MAKE_BEFORE} ${INSTALL_BEFORE} make install ${MAKE_FLAGS} ${INSTALL_FLAGS}"
+if( $? != 0 ) then
+    echo "インストール失敗" > /dev/stderr
+    exit 1
+endif
+
+echo "GCC ${VER} のインストールが完了しました！" > /dev/stderr
