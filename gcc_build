@@ -1,7 +1,7 @@
 #!/bin/tcsh
 ########## 設定項目 ##########
 # インストール先
-set PREFIX=${HOME}/local
+set PREFIX=/usr/local
 # 1回目のビルドに必要なC/C++コンパイラ
 set CC=gcc
 set CXX=g++
